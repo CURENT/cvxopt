@@ -3067,21 +3067,6 @@ spmatrix_reduce(spmatrix* self)
 #endif
 }
 
-static PyMethodDef spmatrix_methods[] = {
-    {"real", (PyCFunction)spmatrix_real, METH_NOARGS,
-        "Returns real part of sparse matrix"},
-    {"imag", (PyCFunction)spmatrix_imag, METH_NOARGS,
-        "Returns imaginary part of sparse matrix"},
-    {"trans", (PyCFunction)spmatrix_trans, METH_NOARGS,
-        "Returns the matrix transpose"},
-    {"ctrans", (PyCFunction)spmatrix_ctrans, METH_NOARGS,
-        "Returns the matrix conjugate transpose"},
-    {"__reduce__", (PyCFunction)spmatrix_reduce, METH_NOARGS,
-        "__reduce__() -> (cls, state)"},
-    {NULL}  /* Sentinel */
-};
-
-
 static int
 bsearch_int(int_t *lower, int_t *upper, int_t key, int_t *k) {
 
@@ -3509,7 +3494,7 @@ spmatrix_subscr(spmatrix* self, PyObject* args)
 static int
 spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
 {
-  int_t i = 0, j = 0, id = SP_ID(self), decref_val = 0;
+    int_t i = 0, j = 0, id = SP_ID(self), decref_val = 0;
   int ndim = 0;
   char itype;
   number val, tempval;
@@ -3581,6 +3566,7 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
 
   /* integer matrix list */
   if (PyList_Check(args) || Matrix_Check(args) || PySlice_Check(args)) {
+      printf("flag pole 0");
 
     if (!(Il = create_indexlist(SP_LGT(self), args))) {
       if (decref_val) { Py_DECREF(value); }
@@ -3819,8 +3805,9 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
       PY_ERR_INT(PyExc_IndexError, "index out of range");
 
     i = CWRAP(i,SP_NROWS(self)); j = CWRAP(j,SP_NCOLS(self));
-    if (spmatrix_getitem_ij(self, i, j, &tempval))
-      spmatrix_setitem_ij(self, i, j, &val);
+    if (spmatrix_getitem_ij(self, i, j, &tempval)) {
+        spmatrix_setitem_ij(self, i, j, &val);
+    }
     else {
       if (!realloc_ccs(self->obj, SP_NNZ(self)+1))
         PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
@@ -3828,7 +3815,8 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
       spmatrix_setitem_ij(self, i, j, &val);
     }
 
-    return 0;
+      printf("flag pole 1");
+      return 0;
   }
 
   if (!(Il = create_indexlist(SP_NROWS(self), argI)) ||
@@ -3854,10 +3842,12 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
     PY_ERR_INT(PyExc_TypeError, "incompatible size of assignment");
   }
 
-  /* ass. argument is dense matrix or number */
+    /* ass. argument is dense matrix or number */
   if  ((itype == 'd' || itype == 'n') && lgtI*lgtJ> 0) {
 
-    int_t nnz = SP_NNZ(self)+lgtI*lgtJ;
+      printf("flag pole 2");
+      printf("Entering access using matrix");
+      int_t nnz = SP_NNZ(self)+lgtI*lgtJ;
 
     int_t *col_merge = calloc(SP_NCOLS(self)+1,sizeof(int_t));
     int_t *row_merge = malloc(nnz*sizeof(int_t));
@@ -3967,7 +3957,7 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
   }
   /* ass. argument is a sparse matrix */
   else if (itype == 's' && lgtI*lgtJ > 0) {
-
+    printf("flag pole 3");
     int_t nnz = SP_NNZ(self)+SP_NNZ(value);
 
     int_t *col_merge = calloc((SP_NCOLS(self)+1),sizeof(int_t));
@@ -4460,6 +4450,185 @@ static int spmatrix_nonzero(matrix *self)
 
   return res;
 }
+
+
+static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
+
+    matrix *Il = NULL, *Jl = NULL, *V = NULL;
+    int_t nrows = -1, ncols = -1;
+    spmatrix *A = (spmatrix *) self;
+
+    nrows = SP_NROWS(A);
+    ncols = SP_NCOLS(A);
+
+    if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
+        return NULL;
+
+    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) PY_ERR_TYPE("index sets I and J must be integer");
+
+    if (MAT_LGT(Il) != MAT_LGT(Jl)) PY_ERR_TYPE("index sets I and J must be of same length");
+
+    if (V && !Matrix_Check(V)) PY_ERR_TYPE("invalid V argument");
+
+    if (V && Matrix_Check(V) && (MAT_ID(V) != SP_ID(A))) PY_ERR_TYPE(
+            "matrix V type does not match with the spmatrix");
+
+    if (V && (MAT_LGT(V) != MAT_LGT(Il))) PY_ERR_TYPE("V has a different length than I or J");
+
+    // check boundaries
+    int_t k, Imax=-1, Jmax=-1;
+    for (k=0; k<MAT_LGT(Il); k++) {
+        if (MAT_BUFI(Il)[k]>Imax) Imax = MAT_BUFI(Il)[k];
+        if (MAT_BUFI(Jl)[k]>Jmax) Jmax = MAT_BUFI(Jl)[k];
+    }
+    if (Imax > nrows || Jmax > ncols)
+    PY_ERR_TYPE("index out of bound error");
+
+    // check if all indices exist
+    int found = -1;
+    int_t i, j, row;
+    for (k = 0; k < MAT_LGT(Il); k++) {
+        found = 0;
+        row = MAT_BUFI(Il)[k];
+        i = MAT_BUFI(Jl)[k];
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+            if (SP_ROW(A)[j] == row)
+                found = 1;
+        if (!found) break;
+    }
+
+    if (found){
+        for (k = 0; k < MAT_LGT(Il); k++) {
+            row = MAT_BUFI(Il)[k];
+            i = MAT_BUFI(Jl)[k];
+
+            if (SP_ID(A) == DOUBLE) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALD(A)[j] = MAT_BUFD(V)[k];
+                    }
+            } else if (SP_ID(A) == COMPLEX) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALZ(A)[j] = MAT_BUFZ(V)[k];
+                    }
+            }
+        }
+    } else {
+        for (k = 0; k < MAT_LGT(Il); k++) {
+            row = MAT_BUFI(Il)[k];
+            i = MAT_BUFI(Jl)[k];
+
+            // set to zero first
+            if (SP_ID(A) == DOUBLE) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALD(A)[j] = 0;
+                    }
+            } else if (SP_ID(A) == COMPLEX) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALZ(A)[j] = 0;
+                    }
+            }
+        }
+        spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, SP_ID(A));
+        A = (spmatrix *) spmatrix_iadd((PyObject *) A, (PyObject *) B);
+        spmatrix_dealloc(B);
+    }
+    Py_INCREF(self);
+    return (PyObject *) self;
+}
+
+static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
+
+    matrix *Il = NULL, *Jl = NULL, *V = NULL;
+    int_t nrows = -1, ncols = -1;
+    spmatrix *A = (spmatrix *) self;
+
+    nrows = SP_NROWS(A);
+    ncols = SP_NCOLS(A);
+
+    if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
+        return NULL;
+
+    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) PY_ERR_TYPE("index sets I and J must be integer");
+
+    if (MAT_LGT(Il) != MAT_LGT(Jl)) PY_ERR_TYPE("index sets I and J must be of same length");
+
+    if (V && !Matrix_Check(V)) PY_ERR_TYPE("invalid V argument");
+
+    if (V && Matrix_Check(V) && (MAT_ID(V) != SP_ID(A))) PY_ERR_TYPE(
+            "matrix V type does not match with the spmatrix");
+
+    if (V && (MAT_LGT(V) != MAT_LGT(Il))) PY_ERR_TYPE("V has a different length than I or J");
+
+    // check boundaries
+    int_t k, Imax=-1, Jmax=-1;
+    for (k=0; k<MAT_LGT(Il); k++) {
+        if (MAT_BUFI(Il)[k]>Imax) Imax = MAT_BUFI(Il)[k];
+        if (MAT_BUFI(Jl)[k]>Jmax) Jmax = MAT_BUFI(Jl)[k];
+    }
+    if (Imax > nrows || Jmax > ncols)
+        PY_ERR_TYPE("index out of bound error");
+
+    // check if all indices exist
+    int found = -1;
+    int_t i, j, row;
+    for (k = 0; k < MAT_LGT(Il); k++) {
+        found = 0;
+        row = MAT_BUFI(Il)[k];
+        i = MAT_BUFI(Jl)[k];
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+            if (SP_ROW(A)[j] == row)
+                found = 1;
+        if (!found) break;
+    }
+
+    if (found){
+        for (k = 0; k < MAT_LGT(Il); k++) {
+            row = MAT_BUFI(Il)[k];
+            i = MAT_BUFI(Jl)[k];
+
+            if (SP_ID(A) == DOUBLE) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALD(A)[j] += MAT_BUFD(V)[k];
+                    }
+            } else if (SP_ID(A) == COMPLEX) {
+                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+                    if (SP_ROW(A)[j] == row) {
+                        SP_VALZ(A)[j] += MAT_BUFZ(V)[k];
+                    }
+            }
+        }
+    } else {
+        spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, SP_ID(A));
+        A = (spmatrix *) spmatrix_iadd((PyObject *) A, (PyObject *) B);
+        spmatrix_dealloc(B);
+    }
+    Py_INCREF(self);
+    return (PyObject *) self;
+}
+
+static PyMethodDef spmatrix_methods[] = {
+        {"real", (PyCFunction)spmatrix_real, METH_NOARGS,
+                "Returns real part of sparse matrix"},
+        {"imag", (PyCFunction)spmatrix_imag, METH_NOARGS,
+                "Returns imaginary part of sparse matrix"},
+        {"ipadd", (PyCFunction) spmatrix_ipadd, METH_VARARGS,
+                "Perform efficient in-place add for sparse matrix"},
+        {"ipset", (PyCFunction) spmatrix_ipset, METH_VARARGS,
+                "Perform efficient in-place set for sparse matrix"},
+        {"trans", (PyCFunction)spmatrix_trans, METH_NOARGS,
+                "Returns the matrix transpose"},
+        {"ctrans", (PyCFunction)spmatrix_ctrans, METH_NOARGS,
+                "Returns the matrix conjugate transpose"},
+        {"__reduce__", (PyCFunction)spmatrix_reduce, METH_NOARGS,
+                "__reduce__() -> (cls, state)"},
+        {NULL}  /* Sentinel */
+};
+
 
 
 static PyNumberMethods spmatrix_as_number = {
