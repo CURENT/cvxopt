@@ -4451,164 +4451,184 @@ static int spmatrix_nonzero(matrix *self)
   return res;
 }
 
-
 static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
 
-    matrix *Il = NULL, *Jl = NULL, *V = NULL;
-    int_t nrows = -1, ncols = -1;
-    spmatrix *A = (spmatrix *) self;
+  matrix *Il = NULL, *Jl = NULL, *V = NULL;
+  int_t nrows = -1, ncols = -1;
+  spmatrix *A = (spmatrix *)self;
 
-    nrows = SP_NROWS(A);
-    ncols = SP_NCOLS(A);
+  nrows = SP_NROWS(A);
+  ncols = SP_NCOLS(A);
+  int id = SP_ID(A);
 
-    if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
-        return NULL;
+  if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
+    return NULL;
 
-    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) PY_ERR_TYPE("index sets I and J must be integer");
+  if (MAT_LGT(Il) != MAT_LGT(Jl))
+  PY_ERR_TYPE("index sets I and J must be of same length");
 
-    if (MAT_LGT(Il) != MAT_LGT(Jl)) PY_ERR_TYPE("index sets I and J must be of same length");
+  if (V && Matrix_Check(V) && (MAT_ID(V) > id))
+  PY_ERR_TYPE("matrix V type does not match with the spmatrix");
 
-    if (V && !Matrix_Check(V)) PY_ERR_TYPE("invalid V argument");
+  if (V && (MAT_LGT(V) != MAT_LGT(Il)))
+  PY_ERR_TYPE("V has a different length than I or J");
 
-    if (V && Matrix_Check(V) && (MAT_ID(V) != SP_ID(A))) PY_ERR_TYPE(
-            "matrix V type does not match with the spmatrix");
+  // check boundaries
+  int_t k, Imax = -1, Jmax = -1;
+  for (k = 0; k < MAT_LGT(Il); k++) {
+    if (MAT_BUFI(Il)[k] > Imax)
+      Imax = MAT_BUFI(Il)[k];
+    if (MAT_BUFI(Jl)[k] > Jmax)
+      Jmax = MAT_BUFI(Jl)[k];
+  }
+  if (Imax > nrows || Jmax > ncols)
+  PY_ERR_TYPE("index out of bound error");
 
-    if (V && (MAT_LGT(V) != MAT_LGT(Il))) PY_ERR_TYPE("V has a different length than I or J");
 
-    // check boundaries
-    int_t k, Imax=-1, Jmax=-1;
-    for (k=0; k<MAT_LGT(Il); k++) {
-        if (MAT_BUFI(Il)[k]>Imax) Imax = MAT_BUFI(Il)[k];
-        if (MAT_BUFI(Jl)[k]>Jmax) Jmax = MAT_BUFI(Jl)[k];
-    }
-    if (Imax > nrows || Jmax > ncols)
-    PY_ERR_TYPE("index out of bound error");
+  // check if all indices exist
+  int found = -1;
+  int_t i, j, row;
+  for (k = 0; k < MAT_LGT(Il); k++) {
+    found = 0;
+    row = MAT_BUFI(Il)[k];
+    i = MAT_BUFI(Jl)[k];
+    for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+      if (SP_ROW(A)[j] == row) {
+        found = 1;
+        break;
+      }
+    if (!found)
+      break;
+  }
 
-    // check if all indices exist
-    int found = -1;
-    int_t i, j, row;
+  if (found) {
+    number n;
     for (k = 0; k < MAT_LGT(Il); k++) {
-        found = 0;
-        row = MAT_BUFI(Il)[k];
-        i = MAT_BUFI(Jl)[k];
+      row = MAT_BUFI(Il)[k];
+      i = MAT_BUFI(Jl)[k];
+
+      if (id == DOUBLE) {
         for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-            if (SP_ROW(A)[j] == row)
-                found = 1;
-        if (!found) break;
+          if (SP_ROW(A)[j] == row) {
+            convert_num[id](&n, V, SP_ID(V), k);
+            SP_VALD(A)[j] = n.d;
+            break;
+          }
+      } else if (id == COMPLEX) {
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+          if (SP_ROW(A)[j] == row) {
+            SP_VALZ(A)[j] = MAT_BUFZ(V)[k];
+            break;
+          }
+      }
     }
+  } else {
+    // set to zero for existing elements
+    for (k = 0; k < MAT_LGT(Il); k++) {
+      row = MAT_BUFI(Il)[k];
+      i = MAT_BUFI(Jl)[k];
 
-    if (found){
-        for (k = 0; k < MAT_LGT(Il); k++) {
-            row = MAT_BUFI(Il)[k];
-            i = MAT_BUFI(Jl)[k];
-
-            if (SP_ID(A) == DOUBLE) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALD(A)[j] = MAT_BUFD(V)[k];
-                    }
-            } else if (SP_ID(A) == COMPLEX) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALZ(A)[j] = MAT_BUFZ(V)[k];
-                    }
-            }
-        }
-    } else {
-        for (k = 0; k < MAT_LGT(Il); k++) {
-            row = MAT_BUFI(Il)[k];
-            i = MAT_BUFI(Jl)[k];
-
-            // set to zero first
-            if (SP_ID(A) == DOUBLE) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALD(A)[j] = 0;
-                    }
-            } else if (SP_ID(A) == COMPLEX) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALZ(A)[j] = 0;
-                    }
-            }
-        }
-        spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, SP_ID(A));
-        A = (spmatrix *) spmatrix_iadd((PyObject *) A, (PyObject *) B);
-        spmatrix_dealloc(B);
+      if (id == DOUBLE) {
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+          if (SP_ROW(A)[j] == row) {
+            SP_VALD(A)[j] = 0;
+            break;
+          }
+      } else if (id == COMPLEX) {
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+          if (SP_ROW(A)[j] == row) {
+            SP_VALZ(A)[j] = 0;
+            break;
+          }
+      }
     }
-    Py_INCREF(self);
-    return (PyObject *) self;
+    spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, id);
+    A = (spmatrix *)spmatrix_iadd((PyObject *)A, (PyObject *)B);
+    spmatrix_dealloc(B);
+  }
+  Py_INCREF(self);
+  return self;
 }
+
 
 static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
 
-    matrix *Il = NULL, *Jl = NULL, *V = NULL;
-    int_t nrows = -1, ncols = -1;
-    spmatrix *A = (spmatrix *) self;
+  matrix *Il = NULL, *Jl = NULL, *V = NULL;
+  int_t nrows = -1, ncols = -1;
+  spmatrix *A = (spmatrix *)self;
 
-    nrows = SP_NROWS(A);
-    ncols = SP_NCOLS(A);
+  nrows = SP_NROWS(A);
+  ncols = SP_NCOLS(A);
+  int id = SP_ID(A);
 
-    if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
-        return NULL;
+  if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
+    return NULL;
 
-    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) PY_ERR_TYPE("index sets I and J must be integer");
+  if (MAT_LGT(Il) != MAT_LGT(Jl))
+    PY_ERR_TYPE("index sets I and J must be of same length");
 
-    if (MAT_LGT(Il) != MAT_LGT(Jl)) PY_ERR_TYPE("index sets I and J must be of same length");
+  if (V && Matrix_Check(V) && (MAT_ID(V) > id))
+    PY_ERR_TYPE("matrix V type does not match with the spmatrix");
 
-    if (V && !Matrix_Check(V)) PY_ERR_TYPE("invalid V argument");
+  if (V && (MAT_LGT(V) != MAT_LGT(Il)))
+    PY_ERR_TYPE("V has a different length than I or J");
 
-    if (V && Matrix_Check(V) && (MAT_ID(V) != SP_ID(A))) PY_ERR_TYPE(
-            "matrix V type does not match with the spmatrix");
+  // check boundaries
+  int_t k, Imax = -1, Jmax = -1;
+  for (k = 0; k < MAT_LGT(Il); k++) {
+    if (MAT_BUFI(Il)[k] > Imax)
+      Imax = MAT_BUFI(Il)[k];
+    if (MAT_BUFI(Jl)[k] > Jmax)
+      Jmax = MAT_BUFI(Jl)[k];
+  }
+  if (Imax > nrows || Jmax > ncols)
+    PY_ERR_TYPE("index out of bound error");
 
-    if (V && (MAT_LGT(V) != MAT_LGT(Il))) PY_ERR_TYPE("V has a different length than I or J");
 
-    // check boundaries
-    int_t k, Imax=-1, Jmax=-1;
-    for (k=0; k<MAT_LGT(Il); k++) {
-        if (MAT_BUFI(Il)[k]>Imax) Imax = MAT_BUFI(Il)[k];
-        if (MAT_BUFI(Jl)[k]>Jmax) Jmax = MAT_BUFI(Jl)[k];
-    }
-    if (Imax > nrows || Jmax > ncols)
-        PY_ERR_TYPE("index out of bound error");
-
-    // check if all indices exist
-    int found = -1;
-    int_t i, j, row;
+  // check if all indices exist
+  int found = -1;
+  int_t i, j, row;
+  for (k = 0; k < MAT_LGT(Il); k++) {
+    found = 0;
+    row = MAT_BUFI(Il)[k];
+    i = MAT_BUFI(Jl)[k];
+    for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+      if (SP_ROW(A)[j] == row) {
+        found = 1;
+        break;
+      }
+    if (!found)
+      break;
+  }
+//
+  if (found) {
+    number n;
     for (k = 0; k < MAT_LGT(Il); k++) {
-        found = 0;
-        row = MAT_BUFI(Il)[k];
-        i = MAT_BUFI(Jl)[k];
+      row = MAT_BUFI(Il)[k];
+      i = MAT_BUFI(Jl)[k];
+
+      if (id == DOUBLE) {
         for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-            if (SP_ROW(A)[j] == row)
-                found = 1;
-        if (!found) break;
+          if (SP_ROW(A)[j] == row) {
+            convert_num[id](&n, V, SP_ID(V), k);
+            SP_VALD(A)[j] += n.d;
+            break;
+          }
+      } else if (id == COMPLEX) {
+        for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
+          if (SP_ROW(A)[j] == row) {
+            SP_VALZ(A)[j] += MAT_BUFZ(V)[k];
+            break;
+          }
+      }
     }
-
-    if (found){
-        for (k = 0; k < MAT_LGT(Il); k++) {
-            row = MAT_BUFI(Il)[k];
-            i = MAT_BUFI(Jl)[k];
-
-            if (SP_ID(A) == DOUBLE) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALD(A)[j] += MAT_BUFD(V)[k];
-                    }
-            } else if (SP_ID(A) == COMPLEX) {
-                for (j = SP_COL(A)[i]; j < SP_COL(A)[i + 1]; j++)
-                    if (SP_ROW(A)[j] == row) {
-                        SP_VALZ(A)[j] += MAT_BUFZ(V)[k];
-                    }
-            }
-        }
-    } else {
-        spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, SP_ID(A));
-        A = (spmatrix *) spmatrix_iadd((PyObject *) A, (PyObject *) B);
-        spmatrix_dealloc(B);
-    }
-    Py_INCREF(self);
-    return (PyObject *) self;
+  } else {
+    spmatrix *B = SpMatrix_NewFromIJV(Il, Jl, V, nrows, ncols, id);
+    A = (spmatrix *)spmatrix_iadd((PyObject *)A, (PyObject *)B);
+    spmatrix_dealloc(B);
+  }
+  Py_INCREF(self);
+  return self;
 }
 
 static PyMethodDef spmatrix_methods[] = {
