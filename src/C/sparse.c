@@ -3160,8 +3160,8 @@ static int spmatrix_additem_ij(spmatrix *A, int_t i, int_t j, number *value){
   if(spmatrix_getitem_ij(A, i, j, &old))
     temp += PyFloat_AsDouble(num2PyObject[1](&old, 0));
   else
-  if (!realloc_ccs(A->obj, SP_NNZ(A)+1))
-  PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
+    if (!realloc_ccs(A->obj, SP_NNZ(A)+1))
+      PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
 
   convert_num[1](&val, PyFloat_FromDouble(temp), 1, 0);
   spmatrix_setitem_ij(A, i, j, &val);
@@ -4473,13 +4473,11 @@ static int spmatrix_nonzero(matrix *self)
   return res;
 }
 
-
 static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
 
   matrix *Il = NULL, *Jl = NULL, *V = NULL;
   int_t nrows = -1, ncols = -1;
   spmatrix *A = (spmatrix *)self;
-  spmatrix *CP = SpMatrix_NewFromSpMatrix(A, SP_ID(A));
 
   nrows = SP_NROWS(A);
   ncols = SP_NCOLS(A);
@@ -4508,13 +4506,26 @@ static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
 
   int_t i, j;
   for (k = 0; k < MAT_LGT(Il); k++) {
-    number v;
+    number val, oldval;
 
     i = MAT_BUFI(Il)[k];
     j = MAT_BUFI(Jl)[k];
 
-    convert_num[id](&v, V, SP_ID(V), k);
-    spmatrix_setitem_ij(A, i, j, &v);
+    convert_num[id](&val, V, 0, k);
+
+    if (val.d == 0.0)
+      if (!spmatrix_getitem_ij(A, i, j, &oldval)) {
+        continue;
+      }
+
+    if (spmatrix_getitem_ij(A, i, j, &oldval)) {
+      spmatrix_setitem_ij(A, i, j, &val);
+    }
+    else {
+      if (!realloc_ccs(A->obj, SP_NNZ(A)+1))
+        PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
+      spmatrix_setitem_ij(A, i, j, &val);
+    }
 
   }
 
@@ -4527,7 +4538,6 @@ static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
   matrix *Il = NULL, *Jl = NULL, *V = NULL;
   int_t nrows = -1, ncols = -1;
   spmatrix *A = (spmatrix *)self;
-  spmatrix *CP = SpMatrix_NewFromSpMatrix(A, SP_ID(A));
 
   nrows = SP_NROWS(A);
   ncols = SP_NCOLS(A);
@@ -4556,13 +4566,13 @@ static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
 
   int_t i, j;
   for (k = 0; k < MAT_LGT(Il); k++) {
-    number v;
+    number val;
 
     i = MAT_BUFI(Il)[k];
     j = MAT_BUFI(Jl)[k];
 
-    convert_num[id](&v, V, SP_ID(V), k);
-    spmatrix_additem_ij(A, i, j, &v);
+    convert_num[id](&val, V, 0, k);
+    spmatrix_additem_ij(A, i, j, &val);
 
   }
 
