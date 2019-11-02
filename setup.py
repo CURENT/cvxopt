@@ -9,7 +9,7 @@ BLAS_LIB_DIR = '/usr/lib'
 # Default names of BLAS and LAPACK libraries
 BLAS_LIB = ['blas']
 LAPACK_LIB = ['lapack']
-BLAS_EXTRA_LINK_ARGS = []
+BLAS_EXTRA_LINK_ARGS = ['']
 
 # Set environment variable BLAS_NOUNDERSCORES=1 if your BLAS/LAPACK do
 # not use trailing underscores

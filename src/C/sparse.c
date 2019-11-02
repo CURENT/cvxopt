@@ -3130,7 +3130,10 @@ spmatrix_setitem_ij(spmatrix *A, int_t i, int_t j, number *value) {
 
     write_num[SP_ID(A)](SP_VAL(A), SP_COL(A)[j] + k, value, 0);
     return;
+  } else if (value->d == 0) {
+    return;
   }
+
   k += SP_COL(A)[j];
 
   for (l=j+1; l<SP_NCOLS(A)+1; l++) SP_COL(A)[l]++;
@@ -3869,7 +3872,6 @@ spmatrix_ass_subscr(spmatrix* self, PyObject* args, PyObject* value)
     /* ass. argument is dense matrix or number */
   if  ((itype == 'd' || itype == 'n') && lgtI*lgtJ> 0) {
 
-      printf("Entering access using matrix");
       int_t nnz = SP_NNZ(self)+lgtI*lgtJ;
 
     int_t *col_merge = calloc(SP_NCOLS(self)+1,sizeof(int_t));
