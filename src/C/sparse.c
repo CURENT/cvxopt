@@ -279,7 +279,7 @@ spmatrix *SpMatrix_NewFromMatrix(matrix *src, int id)
       convert_num[id](&a, src, 0, i+j*MAT_NROWS(src));
       if (((id == INT) && (a.i != Zero[INT].i)) ||
           ((id == DOUBLE) && (a.d != Zero[DOUBLE].d)) ||
-#ifndef _MSC_VER 
+#ifndef _MSC_VER
           ((id == COMPLEX) && (a.z != Zero[COMPLEX].z))) {
 #else
           ((id == COMPLEX) && (creal(a.z) != 0.0 || cimag(a.z) != 0.0))) {
@@ -947,7 +947,7 @@ static int sp_zaxpy(number a, void *x, void *y, int sp_x, int sp_y,
         Y[X->rowind[k] + j*X->nrows] += a.z*(((double complex *)X->values)[k]);
 #else
         tmp = _Cmulcc(a.z, ((_Dcomplex *)X->values)[k]);
-        Y[X->rowind[k] + j*X->nrows] = _Cbuild(creal(tmp)+creal(Y[X->rowind[k] + j*X->nrows]),cimag(tmp)+cimag(Y[X->rowind[k] + j*X->nrows])); 
+        Y[X->rowind[k] + j*X->nrows] = _Cbuild(creal(tmp)+creal(Y[X->rowind[k] + j*X->nrows]),cimag(tmp)+cimag(Y[X->rowind[k] + j*X->nrows]));
 #endif
     }
   }
@@ -1053,7 +1053,7 @@ static int sp_zaxpy(number a, void *x, void *y, int sp_x, int sp_y,
       for (k=0; k<Y->nrows; k++)
         Z->rowind[j*Y->nrows+k] = k;
 
-      for (k=Y->colptr[j]; k<Y->colptr[j+1]; k++) 
+      for (k=Y->colptr[j]; k<Y->colptr[j+1]; k++)
 #ifndef _MSC_VER
         ((double complex *)Z->values)[j*Y->nrows + Y->rowind[k]] +=
             ((double complex *)Y->values)[k];
@@ -1108,7 +1108,7 @@ static int sp_zgemv(char tA, int m, int n, number alpha, void *a, int oA,
   double complex *X = x, *Y = y;
 #else
   _Dcomplex *X = x, *Y = y;
-  _Dcomplex tmp; 
+  _Dcomplex tmp;
 #endif
 
   scal[A->id]((tA == 'N' ? &m : &n), &beta, Y, &iy);
@@ -1213,7 +1213,7 @@ int sp_zsymv(char uplo, int n, number alpha, ccs *A, int oA, void *x, int ix,
               X[ix*(j + (ix > 0 ? 0 : 1-n))];
 #else
 	  tmp = _Cmulcc(alpha.z, _Cmulcc(((_Dcomplex *)A->values)[k],X[ix*(j + (ix > 0 ? 0 : 1-n))]));
-          Y[iy*(i + (iy > 0 ? 0 : 1-n))] = _Cbuild(creal(tmp)+creal(Y[iy*(i + (iy > 0 ? 0 : 1-n))]),cimag(tmp)+cimag(Y[iy*(i + (iy > 0 ? 0 : 1-n))])); 
+          Y[iy*(i + (iy > 0 ? 0 : 1-n))] = _Cbuild(creal(tmp)+creal(Y[iy*(i + (iy > 0 ? 0 : 1-n))]),cimag(tmp)+cimag(Y[iy*(i + (iy > 0 ? 0 : 1-n))]));
 #endif
           if (i != j) {
 #ifndef _MSC_VER
@@ -1761,7 +1761,7 @@ static int sp_zgemm(char tA, char tB, number alpha, void *a, void *b,
         C[j*A->nrows + s->idx[l]] += alpha.z*((double complex *)s->val)[s->idx[l]];
 #else
         tmp = _Cmulcc(alpha.z,((_Dcomplex *)s->val)[s->idx[l]]);
-        C[j*A->nrows + s->idx[l]] = _Cbuild(creal(tmp)+creal(C[j*A->nrows + s->idx[l]]),cimag(tmp)+cimag(C[j*A->nrows + s->idx[l]])); 
+        C[j*A->nrows + s->idx[l]] = _Cbuild(creal(tmp)+creal(C[j*A->nrows + s->idx[l]]),cimag(tmp)+cimag(C[j*A->nrows + s->idx[l]]));
 #endif
     }
     free_spa(s);
@@ -2011,7 +2011,7 @@ static int sp_zgemm(char tA, char tB, number alpha, void *a, void *b,
     double complex *B = b;
 #else
     _Dcomplex *B = b;
-#endif 
+#endif
 
     spa *s = alloc_spa(A->nrows, A->id);
     int_t *colptr_new = calloc(n+1,sizeof(int_t));
@@ -4537,6 +4537,7 @@ static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
 
 static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
 
+  PyObject *Vt = NULL;
   matrix *Il = NULL, *Jl = NULL, *V = NULL;
   int_t nrows = -1, ncols = -1;
   spmatrix *A = (spmatrix *)self;
@@ -4545,17 +4546,13 @@ static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
   ncols = SP_NCOLS(A);
   int id = SP_ID(A);
 
-  if (!PyArg_ParseTuple(args, "OOO:spmatrix", &V, &Il, &Jl))
+  if (!PyArg_ParseTuple(args, "OOO:spmatrix", &Vt, &Il, &Jl))
     return NULL;
+
+
 
   if (MAT_LGT(Il) != MAT_LGT(Jl))
     PY_ERR_TYPE("index sets I and J must be of same length");
-
-  if (V && Matrix_Check(V) && (MAT_ID(V) > id))
-    PY_ERR_TYPE("matrix V type does not match with the spmatrix");
-
-  if (V && (MAT_LGT(V) != MAT_LGT(Il)))
-    PY_ERR_TYPE("V has a different length than I or J");
 
   // check boundaries
   int_t k;
@@ -4567,15 +4564,49 @@ static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
   }
 
   int_t i, j;
-  for (k = 0; k < MAT_LGT(Il); k++) {
-    number val;
+  number val;
+  int isscalar = !Matrix_Check(Vt);
 
-    i = MAT_BUFI(Il)[k];
-    j = MAT_BUFI(Jl)[k];
+  if (!isscalar) {
+    V = (matrix *)Vt;
 
-    convert_num[id](&val, V, 0, k);
-    spmatrix_additem_ij(A, i, j, &val);
+    if (V && (MAT_ID(V) > id))
+      PY_ERR_TYPE("matrix V type does not match with the spmatrix");
 
+    if (V && (MAT_LGT(V) != MAT_LGT(Il)))
+      PY_ERR_TYPE("V has a different length than I or J");
+  } else if (PyLong_Check(Vt)) {
+    val.i = PyLong_AsLong(Vt);
+  } else if (PyFloat_Check(Vt)) {
+    val.d = PyFloat_AsDouble(Vt);
+  } else if (PyComplex_Check(Vt)) {
+    Py_complex c = PyComplex_AsCComplex(Vt);
+
+#ifndef _MSC_VER
+    val.z = c.real + I*c.imag;
+#else
+    val.z = _Cbuild(c.real,c.imag);
+#endif
+  } else {
+    PY_ERR_TYPE("V must be scalar or matrix");
+  }
+
+  if (isscalar) {
+    for (k = 0; k < MAT_LGT(Il); k++) {
+      i = MAT_BUFI(Il)[k];
+      j = MAT_BUFI(Jl)[k];
+
+      spmatrix_additem_ij(A, i, j, &val);
+
+    }
+  } else {
+    for (k = 0; k < MAT_LGT(Il); k++) {
+      i = MAT_BUFI(Il)[k];
+      j = MAT_BUFI(Jl)[k];
+
+      convert_num[id](&val, V, 0, k);
+      spmatrix_additem_ij(A, i, j, &val);
+    }
   }
 
   Py_INCREF(self);
