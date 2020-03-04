@@ -4535,81 +4535,177 @@ static PyObject * spmatrix_ipset(PyObject *self, PyObject *args) {
   return self;
 }
 
-static PyObject * spmatrix_ipadd(PyObject *self, PyObject *args) {
+static inline matrix *array_like_to_matrix(PyObject *o, int id) {
+    matrix *ret = NULL;
 
-  PyObject *Vt = NULL;
-  matrix *Il = NULL, *Jl = NULL, *V = NULL;
-  int_t nrows = -1, ncols = -1;
-  spmatrix *A = (spmatrix *)self;
+    if (Matrix_Check(o)) {
+        Py_INCREF(o);
+        ret = (matrix *)o;
+    } else if (PyObject_CheckBuffer(o)) {
+        int ndim = 0;
+        ret = Matrix_NewFromPyBuffer(o, id, &ndim);
+    } else if (PySequence_Check(o)) {
+        ret = Matrix_NewFromSequence(o, id);
+    } else {
+        PY_ERR_TYPE("Argument must be either a sequence type, a matrix, or a number");
+    }
 
-  nrows = SP_NROWS(A);
-  ncols = SP_NCOLS(A);
-  int id = SP_ID(A);
+    return ret;
+}
 
-  if (!PyArg_ParseTuple(args, "OOO:spmatrix", &Vt, &Il, &Jl))
-    return NULL;
+static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
+    PyObject *Ilt = NULL, *Jlt = NULL, *Vt = NULL;
+    matrix *Il, *Jl, *V;
+    spmatrix *A = (spmatrix *)self;
 
+    if (!PyArg_ParseTuple(args, "OOO:spmatrix", &Vt, &Ilt, &Jlt)) {
+        return NULL;
+    }
 
+    Il = array_like_to_matrix(Ilt, INT);
+    if (Il == NULL) {
+        return NULL;
+    }
 
-  if (MAT_LGT(Il) != MAT_LGT(Jl))
-    PY_ERR_TYPE("index sets I and J must be of same length");
+    Jl = array_like_to_matrix(Jlt, INT);
+    if (Jl == NULL) {
+        Py_DECREF(Il);
 
-  // check boundaries
-  int_t k;
-  for (k = 0; k < MAT_LGT(Il); k++) {
-    if (MAT_BUFI(Il)[k] > nrows)
-      PY_ERR_TYPE("index out of bound error");
-    if (MAT_BUFI(Jl)[k] > ncols)
-      PY_ERR_TYPE("index out of bound error");
-  }
+        return NULL;
+    }
 
-  int_t i, j;
-  number val;
-  int isscalar = !Matrix_Check(Vt);
+    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
+        Py_DECREF(Il);
+        Py_DECREF(Jl);
 
-  if (!isscalar) {
-    V = (matrix *)Vt;
+        PY_ERR_TYPE("index sets I and J must be integers");
+    }
 
-    if (V && (MAT_ID(V) > id))
-      PY_ERR_TYPE("matrix V type does not match with the spmatrix");
+    int_t nrows, ncols;
+    int id;
 
-    if (V && (MAT_LGT(V) != MAT_LGT(Il)))
-      PY_ERR_TYPE("V has a different length than I or J");
-  } else if (PyLong_Check(Vt)) {
-    val.i = PyLong_AsLong(Vt);
-  } else if (PyFloat_Check(Vt)) {
-    val.d = PyFloat_AsDouble(Vt);
-  } else if (PyComplex_Check(Vt)) {
-    Py_complex c = PyComplex_AsCComplex(Vt);
+    nrows = SP_NROWS(A);
+    ncols = SP_NCOLS(A);
+    id = SP_ID(A);
+
+    if (MAT_LGT(Il) != MAT_LGT(Jl)) {
+        Py_DECREF(Il);
+        Py_DECREF(Jl);
+
+        PY_ERR_TYPE("index sets I and J must be of same length");
+    }
+
+    for (int_t k = 0; k < MAT_LGT(Il); k++) {
+        if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("index out of bound error");
+        }
+    }
+
+    int_t i, j;
+    number val;
+    int isscalar = 1;
+
+    if (PyLong_Check(Vt)) {
+        val.i = PyLong_AsLong(Vt);
+
+        if (id >= DOUBLE) {
+            val.d = (double)val.i;
+        }
+
+        if (id >= COMPLEX) {
+#ifndef _MSC_VER
+            val.z = val.d + I * 0.0;
+#else
+            val.z = _Cbuild(val.d, 0.0);
+#endif
+        }
+    } else if (PyFloat_Check(Vt)) {
+        if (DOUBLE > id) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("scalar V type does not match with the spmatrix");
+        }
+
+        val.d = PyFloat_AsDouble(Vt);
+
+        if (id >= COMPLEX) {
+#ifndef _MSC_VER
+            val.z = val.d + I * 0.0;
+#else
+            val.z = _Cbuild(val.d, 0.0);
+#endif
+        }
+    } else if (PyComplex_Check(Vt)) {
+        if (COMPLEX > id) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("scalar V type does not match with the spmatrix");
+        }
+
+        Py_complex c = PyComplex_AsCComplex(Vt);
 
 #ifndef _MSC_VER
-    val.z = c.real + I*c.imag;
+        val.z = c.real + I * c.imag;
 #else
-    val.z = _Cbuild(c.real,c.imag);
+        val.z = _Cbuild(c.real,c.imag);
 #endif
-  } else {
-    PY_ERR_TYPE("V must be scalar or matrix");
-  }
+    } else {
+        isscalar = 0;
 
-  if (isscalar) {
-    for (k = 0; k < MAT_LGT(Il); k++) {
-      i = MAT_BUFI(Il)[k];
-      j = MAT_BUFI(Jl)[k];
+        V = array_like_to_matrix(Vt, id);
+        if (V == NULL) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
 
-      spmatrix_additem_ij(A, i, j, &val);
+            return NULL;
+        }
 
+        if (MAT_ID(V) > id) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+            Py_DECREF(V);
+
+            PY_ERR_TYPE("matrix V type does not match with the spmatrix");
+        }
+
+        if (MAT_LGT(V) != MAT_LGT(Il)) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+            Py_DECREF(V);
+
+            PY_ERR_TYPE("V has a different length than I or J");
+        }
     }
-  } else {
-    for (k = 0; k < MAT_LGT(Il); k++) {
-      i = MAT_BUFI(Il)[k];
-      j = MAT_BUFI(Jl)[k];
 
-      convert_num[id](&val, V, 0, k);
-      spmatrix_additem_ij(A, i, j, &val);
+    if (isscalar) {
+        for (int_t k = 0; k < MAT_LGT(Il); k++) {
+            i = MAT_BUFI(Il)[k];
+            j = MAT_BUFI(Jl)[k];
+
+            spmatrix_additem_ij(A, i, j, &val);
+        }
+    } else {
+        for (int_t k = 0; k < MAT_LGT(Il); k++) {
+            i = MAT_BUFI(Il)[k];
+            j = MAT_BUFI(Jl)[k];
+
+            convert_num[id](&val, V, 0, k);
+            spmatrix_additem_ij(A, i, j, &val);
+        }
+
+        Py_DECREF(V);
     }
-  }
+
+  Py_DECREF(Il);
+  Py_DECREF(Jl);
 
   Py_INCREF(self);
+
   return self;
 }
 
