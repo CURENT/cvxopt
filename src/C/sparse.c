@@ -3130,7 +3130,9 @@ spmatrix_setitem_ij(spmatrix *A, int_t i, int_t j, number *value) {
 
     write_num[SP_ID(A)](SP_VAL(A), SP_COL(A)[j] + k, value, 0);
     return;
-  } else if (value->d == 0) {
+  } else if ((SP_ID(A) == INT     && value->i == 0) ||
+             (SP_ID(A) == DOUBLE  && value->d == 0) ||
+             (SP_ID(A) == COMPLEX && value->z == 0)) {
     return;
   }
 
@@ -3148,29 +3150,36 @@ spmatrix_setitem_ij(spmatrix *A, int_t i, int_t j, number *value) {
   write_num[SP_ID(A)](SP_VAL(A), k, value, 0);
 }
 
-static int spmatrix_additem_ij(spmatrix *A, int_t i, int_t j, number *value){
+static int spmatrix_additem_ij(spmatrix *A, int_t i, int_t j, number *value) {
+    number val;
 
-  number old, val;
+    if (OUT_RNG(i, SP_NROWS(A)) || OUT_RNG(j, SP_NCOLS(A))) {
+        PY_ERR_INT(PyExc_IndexError, "index out of range");
+    }
 
-  double temp = value->d;
+    i = CWRAP(i, SP_NROWS(A));
+    j = CWRAP(j, SP_NCOLS(A));
 
-  if (OUT_RNG(i, SP_NROWS(A)) || OUT_RNG(j, SP_NCOLS(A)))
-  PY_ERR_INT(PyExc_IndexError, "index out of range");
+    if (!(spmatrix_getitem_ij(A, i, j, &val) || realloc_ccs(A->obj, SP_NNZ(A)+1))) {
+        PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
+    }
 
-  i = CWRAP(i, SP_NROWS(A));
-  j = CWRAP(j, SP_NCOLS(A));
+    switch (SP_ID(A)) {
+    case INT:
+        val.i += value->i;
+        break;
 
-  if(spmatrix_getitem_ij(A, i, j, &old))
-    temp += PyFloat_AsDouble(num2PyObject[1](&old, 0));
-  else
-    if (!realloc_ccs(A->obj, SP_NNZ(A)+1))
-      PY_ERR_INT(PyExc_MemoryError, "insufficient memory");
+    case DOUBLE:
+        val.d += value->d;
+        break;
 
-  convert_num[1](&val, PyFloat_FromDouble(temp), 1, 0);
-  spmatrix_setitem_ij(A, i, j, &val);
+    case COMPLEX:
+        val.z += value->z;
+        break;
+    }
 
-  return 0;
-
+    spmatrix_setitem_ij(A, i, j, &val);
+    return 0;
 }
 
 
@@ -4539,7 +4548,6 @@ static inline matrix *array_like_to_matrix(PyObject *o, int id) {
     matrix *ret = NULL;
 
     if (Matrix_Check(o)) {
-        Py_INCREF(o);
         ret = (matrix *)o;
     } else if (PyObject_CheckBuffer(o)) {
         int ndim = 0;
@@ -4581,7 +4589,7 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
 
         if (id >= COMPLEX) {
 #ifndef _MSC_VER
-            val.z = val.d + I * 0.0;
+            val.z = (double complex)val.d;
 #else
             val.z = _Cbuild(val.d, 0.0);
 #endif
@@ -4595,7 +4603,7 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
 
         if (id >= COMPLEX) {
 #ifndef _MSC_VER
-            val.z = val.d + I * 0.0;
+            val.z = (double complex)val.d;
 #else
             val.z = _Cbuild(val.d, 0.0);
 #endif
@@ -4610,7 +4618,7 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
 #ifndef _MSC_VER
         val.z = c.real + I * c.imag;
 #else
-        val.z = _Cbuild(c.real,c.imag);
+        val.z = _Cbuild(c.real, c.imag);
 #endif
     } else {
         isscalar = 0;
@@ -4627,38 +4635,27 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         j = PyLong_AsLong(Jlt);
 
         spmatrix_additem_ij(A, i, j, &val);
+
+        Py_INCREF(self);
+
+        return self;
     } else {
         Il = array_like_to_matrix(Ilt, INT);
-        if (Il == NULL) {
-            return NULL;
-        }
-
         Jl = array_like_to_matrix(Jlt, INT);
-        if (Jl == NULL) {
-            Py_DECREF(Il);
-
+        if (Il == NULL || Jl == NULL) {
             return NULL;
         }
 
         if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
             PY_ERR_TYPE("index sets I and J must be integers");
         }
 
         if (MAT_LGT(Il) != MAT_LGT(Jl)) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
             PY_ERR_TYPE("index sets I and J must be of same length");
         }
 
         for (int_t k = 0; k < MAT_LGT(Il); k++) {
             if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
-                Py_DECREF(Il);
-                Py_DECREF(Jl);
-
                 PY_ERR_TYPE("index out of bound error");
             }
         }
@@ -4667,25 +4664,14 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
     if (!isscalar) {
         V = array_like_to_matrix(Vt, id);
         if (V == NULL) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
             return NULL;
         }
 
         if (MAT_ID(V) > id) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-            Py_DECREF(V);
-
             PY_ERR_TYPE("matrix V type does not match with the spmatrix");
         }
 
         if (MAT_LGT(V) != MAT_LGT(Il)) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-            Py_DECREF(V);
-
             PY_ERR_TYPE("V has a different length than I or J");
         }
 
@@ -4696,8 +4682,6 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
             convert_num[id](&val, V, 0, k);
             spmatrix_additem_ij(A, i, j, &val);
         }
-
-        Py_DECREF(V);
     } else {
         for (int_t k = 0; k < MAT_LGT(Il); k++) {
             i = MAT_BUFI(Il)[k];
@@ -4706,9 +4690,6 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
             spmatrix_additem_ij(A, i, j, &val);
         }
     }
-
-    Py_DECREF(Il);
-    Py_DECREF(Jl);
 
     Py_INCREF(self);
 
