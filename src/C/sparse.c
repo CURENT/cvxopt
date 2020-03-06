@@ -4562,51 +4562,15 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         return NULL;
     }
 
-    Il = array_like_to_matrix(Ilt, INT);
-    if (Il == NULL) {
-        return NULL;
-    }
-
-    Jl = array_like_to_matrix(Jlt, INT);
-    if (Jl == NULL) {
-        Py_DECREF(Il);
-
-        return NULL;
-    }
-
-    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
-        Py_DECREF(Il);
-        Py_DECREF(Jl);
-
-        PY_ERR_TYPE("index sets I and J must be integers");
-    }
-
     int_t nrows, ncols;
-    int id;
+    number val;
+    int id, isscalar;
+
+    isscalar = 1;
 
     nrows = SP_NROWS(A);
     ncols = SP_NCOLS(A);
     id = SP_ID(A);
-
-    if (MAT_LGT(Il) != MAT_LGT(Jl)) {
-        Py_DECREF(Il);
-        Py_DECREF(Jl);
-
-        PY_ERR_TYPE("index sets I and J must be of same length");
-    }
-
-    for (int_t k = 0; k < MAT_LGT(Il); k++) {
-        if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
-            PY_ERR_TYPE("index out of bound error");
-        }
-    }
-
-    int_t i, j;
-    number val;
-    int isscalar = 1;
 
     if (PyLong_Check(Vt)) {
         val.i = PyLong_AsLong(Vt);
@@ -4624,9 +4588,6 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         }
     } else if (PyFloat_Check(Vt)) {
         if (DOUBLE > id) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
             PY_ERR_TYPE("scalar V type does not match with the spmatrix");
         }
 
@@ -4641,9 +4602,6 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         }
     } else if (PyComplex_Check(Vt)) {
         if (COMPLEX > id) {
-            Py_DECREF(Il);
-            Py_DECREF(Jl);
-
             PY_ERR_TYPE("scalar V type does not match with the spmatrix");
         }
 
@@ -4656,7 +4614,57 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
 #endif
     } else {
         isscalar = 0;
+    }
 
+    int_t i, j;
+
+    if (PyLong_Check(Ilt) && PyLong_Check(Jlt)) {
+        if (!isscalar) {
+            PY_ERR_TYPE("Can't mix nonscalar values with scalar index");
+        }
+
+        i = PyLong_AsLong(Ilt);
+        j = PyLong_AsLong(Jlt);
+
+        spmatrix_additem_ij(A, i, j, &val);
+    } else {
+        Il = array_like_to_matrix(Ilt, INT);
+        if (Il == NULL) {
+            return NULL;
+        }
+
+        Jl = array_like_to_matrix(Jlt, INT);
+        if (Jl == NULL) {
+            Py_DECREF(Il);
+
+            return NULL;
+        }
+
+        if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("index sets I and J must be integers");
+        }
+
+        if (MAT_LGT(Il) != MAT_LGT(Jl)) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("index sets I and J must be of same length");
+        }
+
+        for (int_t k = 0; k < MAT_LGT(Il); k++) {
+            if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
+                Py_DECREF(Il);
+                Py_DECREF(Jl);
+
+                PY_ERR_TYPE("index out of bound error");
+            }
+        }
+    }
+
+    if (!isscalar) {
         V = array_like_to_matrix(Vt, id);
         if (V == NULL) {
             Py_DECREF(Il);
@@ -4680,16 +4688,7 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
 
             PY_ERR_TYPE("V has a different length than I or J");
         }
-    }
 
-    if (isscalar) {
-        for (int_t k = 0; k < MAT_LGT(Il); k++) {
-            i = MAT_BUFI(Il)[k];
-            j = MAT_BUFI(Jl)[k];
-
-            spmatrix_additem_ij(A, i, j, &val);
-        }
-    } else {
         for (int_t k = 0; k < MAT_LGT(Il); k++) {
             i = MAT_BUFI(Il)[k];
             j = MAT_BUFI(Jl)[k];
@@ -4699,14 +4698,21 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         }
 
         Py_DECREF(V);
+    } else {
+        for (int_t k = 0; k < MAT_LGT(Il); k++) {
+            i = MAT_BUFI(Il)[k];
+            j = MAT_BUFI(Jl)[k];
+
+            spmatrix_additem_ij(A, i, j, &val);
+        }
     }
 
-  Py_DECREF(Il);
-  Py_DECREF(Jl);
+    Py_DECREF(Il);
+    Py_DECREF(Jl);
 
-  Py_INCREF(self);
+    Py_INCREF(self);
 
-  return self;
+    return self;
 }
 
 static PyMethodDef spmatrix_methods[] = {
