@@ -4548,6 +4548,7 @@ static inline matrix *array_like_to_matrix(PyObject *o, int id) {
     matrix *ret = NULL;
 
     if (Matrix_Check(o)) {
+        Py_INCREF(o);
         ret = (matrix *)o;
     } else if (PyObject_CheckBuffer(o)) {
         int ndim = 0;
@@ -4682,6 +4683,8 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
             convert_num[id](&val, V, 0, k);
             spmatrix_additem_ij(A, i, j, &val);
         }
+
+        Py_DECREF(V);
     } else {
         for (int_t k = 0; k < MAT_LGT(Il); k++) {
             i = MAT_BUFI(Il)[k];
@@ -4690,6 +4693,9 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
             spmatrix_additem_ij(A, i, j, &val);
         }
     }
+
+    Py_DECREF(Il);
+    Py_DECREF(Jl);
 
     Py_INCREF(self);
 
