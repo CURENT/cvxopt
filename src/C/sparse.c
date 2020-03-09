@@ -4640,39 +4640,65 @@ static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
         Py_INCREF(self);
 
         return self;
-    } else {
-        Il = array_like_to_matrix(Ilt, INT);
-        Jl = array_like_to_matrix(Jlt, INT);
-        if (Il == NULL || Jl == NULL) {
-            return NULL;
-        }
+    }
 
-        if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
-            PY_ERR_TYPE("index sets I and J must be integers");
-        }
+    Il = array_like_to_matrix(Ilt, INT);
+    if (Il == NULL) {
+        return NULL;
+    }
 
-        if (MAT_LGT(Il) != MAT_LGT(Jl)) {
-            PY_ERR_TYPE("index sets I and J must be of same length");
-        }
+    Jl = array_like_to_matrix(Jlt, INT);
+    if (Il == NULL) {
+        Py_DECREF(Il);
 
-        for (int_t k = 0; k < MAT_LGT(Il); k++) {
-            if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
-                PY_ERR_TYPE("index out of bound error");
-            }
+        return NULL;
+    }
+
+    if (MAT_ID(Il) != INT || MAT_ID(Jl) != INT) {
+        Py_DECREF(Il);
+        Py_DECREF(Jl);
+
+        PY_ERR_TYPE("index sets I and J must be integers");
+    }
+
+    if (MAT_LGT(Il) != MAT_LGT(Jl)) {
+        Py_DECREF(Il);
+        Py_DECREF(Jl);
+
+        PY_ERR_TYPE("index sets I and J must be of same length");
+    }
+
+    for (int_t k = 0; k < MAT_LGT(Il); k++) {
+        if (MAT_BUFI(Il)[k] > nrows || MAT_BUFI(Jl)[k] > ncols) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
+            PY_ERR_TYPE("index out of bound error");
         }
     }
 
     if (!isscalar) {
         V = array_like_to_matrix(Vt, id);
         if (V == NULL) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+
             return NULL;
         }
 
         if (MAT_ID(V) > id) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+            Py_DECREF(V);
+
             PY_ERR_TYPE("matrix V type does not match with the spmatrix");
         }
 
         if (MAT_LGT(V) != MAT_LGT(Il)) {
+            Py_DECREF(Il);
+            Py_DECREF(Jl);
+            Py_DECREF(V);
+
             PY_ERR_TYPE("V has a different length than I or J");
         }
 
