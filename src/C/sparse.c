@@ -4732,6 +4732,12 @@ static PyObject *spmatrix_ipset(PyObject *self, PyObject *args) {
     return self;
 }
 
+/*
+ * ipadd and ipset are the same functions with different functions to modify
+ * the matrix (spmatrix_additem_ij and spmatrix_setitem_ij, respectively). Do
+ * want to just make one function that does all the logic, with one of these
+ * two functions passed as an argument?
+ */
 static PyObject *spmatrix_ipadd(PyObject *self, PyObject *args) {
     PyObject *Ilt = NULL, *Jlt = NULL, *Vt = NULL;
     matrix *Il, *Jl, *V;
