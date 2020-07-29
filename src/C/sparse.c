@@ -3152,7 +3152,7 @@ static void spmatrix_setitem_ij(spmatrix *A, int_t i, int_t j, number *value) {
   write_num[SP_ID(A)](SP_VAL(A), k, value, 0);
 }
 
-static void spmatrix_additem_ij(spmatrix *A, int_t i, int_t j, number *value) {
+static int spmatrix_additem_ij(spmatrix *A, int_t i, int_t j, number *value) {
     number val;
 
     if (OUT_RNG(i, SP_NROWS(A)) || OUT_RNG(j, SP_NCOLS(A))) {
